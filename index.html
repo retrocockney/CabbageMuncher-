@@ -1,0 +1,1558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Infinite Cabbage Cruncher 3D</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+
+        /* Floating Munch Text Animations */
+        @keyframes pop-float {
+            0% { opacity: 1; transform: translateY(0) scale(0.8) rotate(-3deg); }
+            50% { opacity: 1; transform: translateY(-45px) scale(1.25) rotate(3deg); }
+            100% { opacity: 0; transform: translateY(-90px) scale(0.9) rotate(0deg); }
+        }
+
+        .pop-text {
+            animation: pop-float 0.75s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+        }
+
+        /* Lightning Flash Overlay */
+        #lightning-flash {
+            transition: opacity 0.05s ease-out;
+        }
+
+        /* Crate Reveal Animation */
+        @keyframes crate-reveal {
+            0% { opacity: 0; transform: scale(0.5) rotate(-6deg); }
+            70% { opacity: 1; transform: scale(1.08) rotate(2deg); }
+            100% { opacity: 1; transform: scale(1) rotate(0deg); }
+        }
+        .crate-reveal {
+            animation: crate-reveal 0.5s ease-out;
+        }
+
+        /* Custom Scrollbar for Tab Leaderboard */
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(34, 197, 94, 0.6);
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-white w-screen h-screen relative select-none overflow-hidden">
+
+    <!-- INITIAL USERNAME SELECTION MODAL -->
+    <div id="username-modal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4 transition-opacity duration-300">
+        <div class="bg-slate-900 border-2 border-emerald-500/60 w-full max-w-md rounded-3xl p-6 sm:p-8 shadow-2xl flex flex-col items-center text-center gap-5">
+            
+            <div class="w-16 h-16 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-center text-emerald-400 text-3xl shadow-inner">
+                <i class="fa-solid fa-leaf"></i>
+            </div>
+
+            <div>
+                <h1 class="text-2xl sm:text-3xl font-black text-white tracking-wide">WELCOME MUNCHER</h1>
+                <p class="text-xs sm:text-sm text-slate-400 mt-1">Enter your name to load or start your persistent cabbage eating record!</p>
+            </div>
+
+            <form id="username-form" class="w-full flex flex-col gap-4">
+                <div class="flex flex-col items-start gap-1 w-full text-left">
+                    <label for="username-input" class="text-xs font-bold text-slate-300 uppercase tracking-wider">Username</label>
+                    <input 
+                        type="text" 
+                        id="username-input" 
+                        maxlength="16" 
+                        placeholder="Enter your name..." 
+                        required 
+                        class="w-full bg-slate-800 border border-slate-700 focus:border-emerald-500 text-white font-bold rounded-xl px-4 py-3 outline-none transition text-base"
+                    />
+                </div>
+
+                <button 
+                    type="submit" 
+                    class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3.5 px-6 rounded-xl shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2 text-base mt-2 cursor-pointer"
+                >
+                    <span>START EATING</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Lightning Flash Overlay -->
+    <div id="lightning-flash" class="absolute inset-0 bg-white opacity-0 pointer-events-none z-30"></div>
+
+    <!-- First-Person Crosshair -->
+    <div id="crosshair" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none flex items-center justify-center opacity-80">
+        <div class="w-2.5 h-2.5 bg-white/90 rounded-full border border-slate-950 shadow-lg"></div>
+    </div>
+
+    <!-- 3D WebGL Canvas Container -->
+    <div id="canvas-container" class="absolute inset-0 w-full h-full z-0 cursor-pointer"></div>
+
+    <!-- Background Music Audio Element (Looped) -->
+    <audio id="bg-music" loop preload="auto">
+        <!-- Embedded user audio track data URI -->
+        <source src="data:audio/mp3;base64,//uQZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAAC8wCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA==" type="audio/mpeg">
+    </audio>
+
+    <!-- Main HUD Overlay -->
+    <div class="absolute inset-0 z-10 pointer-events-none flex flex-col justify-between p-4 sm:p-6">
+        
+        <!-- Top Navigation / Stats & Environmental HUD Bar -->
+        <div class="flex justify-between items-start w-full gap-2 sm:gap-4">
+            
+            <!-- Main Score Board -->
+            <div class="bg-slate-900/85 backdrop-blur-md border border-emerald-500/40 p-3.5 sm:p-4 rounded-2xl shadow-2xl flex flex-col pointer-events-auto min-w-[150px] sm:min-w-[210px]">
+                <span class="text-[10px] sm:text-xs uppercase tracking-wider text-emerald-400 font-black">Cabbages Eaten</span>
+                <div id="score-display" class="text-3xl sm:text-5xl font-black text-white tracking-tight leading-none my-1">0</div>
+                <div class="flex items-center gap-2 text-[11px] sm:text-xs text-slate-300 font-semibold">
+                    <i class="fa-solid fa-bolt text-amber-400"></i>
+                    <span>CPM: <strong id="cpm-display" class="text-amber-300">0</strong> / min</span>
+                    <span class="ml-2 text-yellow-300 font-bold"><i class="fa-solid fa-coins mr-1"></i><strong id="wallet-display">0</strong></span>
+                </div>
+            </div>
+
+            <!-- Environmental Status Info (Time + Weather) -->
+            <div class="flex flex-col items-center gap-1.5 sm:gap-2 pointer-events-auto">
+                <!-- Clock Badge -->
+                <div class="bg-slate-900/85 backdrop-blur-md border border-amber-500/40 px-3.5 py-1.5 rounded-xl shadow-lg flex items-center gap-2 text-xs font-extrabold text-amber-300">
+                    <i id="clock-icon" class="fa-solid fa-sun text-amber-400 text-sm"></i>
+                    <span id="clock-display" class="tracking-wide">12:00 PM</span>
+                    <span id="phase-display" class="text-[10px] text-slate-400 uppercase font-bold">DAY</span>
+                </div>
+
+                <!-- Weather Badge -->
+                <div id="weather-badge" class="bg-slate-900/85 backdrop-blur-md border border-cyan-500/40 px-3.5 py-1.5 rounded-xl shadow-lg flex items-center gap-2 text-xs font-extrabold text-cyan-300">
+                    <i id="weather-icon" class="fa-solid fa-sun text-amber-400"></i>
+                    <span id="weather-display" class="uppercase tracking-wider">CLEAR</span>
+                </div>
+            </div>
+
+            <!-- Audio Controls -->
+            <div class="flex items-center gap-2 pointer-events-auto">
+                <button id="crate-btn" title="Muncher Shop" class="bg-slate-900/85 hover:bg-slate-800 text-white p-3 sm:px-4 sm:py-3 rounded-xl border border-amber-500/50 transition active:scale-95 flex items-center gap-2 shadow-lg cursor-pointer">
+                    <i class="fa-solid fa-box-open text-amber-400"></i>
+                    <span class="hidden sm:inline text-xs font-bold">SHOP</span>
+                    
+                </button>
+                <button id="sound-btn" title="Toggle Sound & Music" class="bg-slate-900/85 hover:bg-slate-800 text-white p-3 sm:px-4 sm:py-3 rounded-xl border border-slate-700 transition active:scale-95 flex items-center gap-2 shadow-lg cursor-pointer">
+                    <i id="sound-icon" class="fa-solid fa-volume-high text-emerald-400"></i>
+                    <span class="hidden sm:inline text-xs font-bold">AUDIO</span>
+                    
+                </button>
+            </div>
+        </div>
+
+        <!-- Center Mouse Look Prompt -->
+        <div id="pointer-prompt" class="text-center my-auto transition-opacity duration-300">
+            <div class="inline-block bg-slate-900/90 backdrop-blur-md border-2 border-emerald-500 px-6 py-4 rounded-2xl shadow-2xl animate-bounce pointer-events-auto cursor-pointer">
+                <div class="text-lg sm:text-xl font-extrabold text-white mb-1">
+                    <i class="fa-solid fa-mouse-pointer text-emerald-400 mr-2"></i>CLICK TO LOOK AROUND
+                </div>
+                <div class="text-xs font-bold text-slate-300 flex flex-col sm:flex-row gap-2 justify-center items-center mt-2">
+                    <span>Press or Hold <kbd class="bg-emerald-500 text-slate-950 px-2 py-0.5 rounded font-black">E</kbd> / Left-Click to Eat</span>
+                    <span class="text-slate-500 hidden sm:inline">•</span>
+                    <span>Hold <kbd class="bg-amber-400 text-slate-950 px-2 py-0.5 rounded font-black">TAB</kbd> for Leaderboard</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Floating Text Popups Container -->
+        <div id="pop-text-container" class="absolute inset-0 pointer-events-none overflow-hidden"></div>
+
+        <!-- Bottom Status Bar -->
+        <div class="flex justify-between items-end w-full">
+            <div class="bg-slate-900/85 backdrop-blur-md border border-slate-700/60 px-4 py-2 rounded-xl text-xs text-slate-300 pointer-events-auto flex items-center gap-2 shadow-lg">
+                <i class="fa-solid fa-user text-emerald-400"></i>
+                <span>Muncher: <strong id="player-name-display" class="text-white">Player</strong></span>
+                <button id="edit-name-btn" class="text-slate-400 hover:text-emerald-400 ml-1 transition cursor-pointer">
+                    <i class="fa-solid fa-pen-to-square"></i>
+                    
+                </button>
+            </div>
+            <div class="text-right text-[11px] text-slate-300 bg-slate-900/85 px-3 py-1.5 rounded-lg border border-slate-800 backdrop-blur-sm hidden sm:block">
+                Stand on Dirt • Hold <span class="text-amber-400 font-bold">TAB</span> for Scores • <span class="text-emerald-400 font-bold">E / Click</span> to Eat • <span class="text-amber-400 font-bold">P</span> to Pause
+            </div>
+        </div>
+    </div>
+
+    <!-- PAUSE MENU (P) -->
+    <div id="pause-menu" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md hidden items-center justify-center p-4" style="z-index:50">
+        <div class="bg-slate-900 border border-emerald-500/50 w-full max-w-sm rounded-3xl p-6 shadow-2xl flex flex-col gap-3">
+            <h2 class="text-2xl font-black text-white text-center tracking-wide mb-2">PAUSED</h2>
+            <button id="pause-resume-btn" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3 rounded-xl transition active:scale-95 cursor-pointer">RESUME</button>
+            <button id="pause-crates-btn" class="w-full bg-slate-800 hover:bg-slate-700 text-white font-black py-3 rounded-xl border border-slate-700 transition active:scale-95 cursor-pointer"><i class="fa-solid fa-box-open text-amber-400 mr-2"></i>MUNCHER SHOP</button>
+            <button id="pause-sound-btn" class="w-full bg-slate-800 hover:bg-slate-700 text-white font-black py-3 rounded-xl border border-slate-700 transition active:scale-95 cursor-pointer"><i class="fa-solid fa-volume-high text-emerald-400 mr-2"></i>TOGGLE AUDIO</button>
+            <button id="pause-name-btn" class="w-full bg-slate-800 hover:bg-slate-700 text-white font-black py-3 rounded-xl border border-slate-700 transition active:scale-95 cursor-pointer"><i class="fa-solid fa-pen-to-square text-emerald-400 mr-2"></i>CHANGE MUNCHER NAME</button>
+            <button id="pause-reset-btn" class="w-full bg-slate-800 hover:bg-red-900/60 text-white font-black py-3 rounded-xl border border-slate-700 transition active:scale-95 cursor-pointer"><i class="fa-solid fa-rotate-left text-red-400 mr-2"></i>RESET PROGRESS</button>
+        </div>
+    </div>
+
+    <!-- MUNCHER SHOP (crates, skins, market) -->
+    <div id="crate-modal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md hidden items-center justify-center p-3 sm:p-6" style="z-index:60">
+        <div class="bg-slate-900 border border-amber-500/50 w-full max-w-3xl rounded-3xl shadow-2xl flex flex-col max-h-[92vh]">
+            <div class="flex justify-between items-center px-6 pt-5 pb-3 border-b border-slate-800">
+                <div>
+                    <h2 class="text-2xl font-black text-white tracking-wide"><i class="fa-solid fa-store text-amber-400 mr-2"></i>MUNCHER SHOP</h2>
+                    <p class="text-xs text-slate-400">Balance: <strong id="crate-balance" class="text-amber-300">0</strong> cabbages</p>
+                </div>
+                <button id="crate-close-btn" class="text-slate-400 hover:text-white text-xl cursor-pointer"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="flex gap-2 px-6 pt-4">
+                <button class="shop-tab" data-tab="crates">Crates</button>
+                <button class="shop-tab" data-tab="skins">Skins</button>
+                <button class="shop-tab" data-tab="market">Market</button>
+            </div>
+
+            <div class="overflow-y-auto px-6 py-4 flex-1">
+                <div id="panel-crates" class="shop-panel flex flex-col gap-4">
+                    <div class="flex flex-col items-center gap-3 bg-slate-800/60 rounded-2xl p-5 border border-slate-700">
+                        <div id="crate-result" class="min-h-[96px] w-full flex items-center justify-center text-center text-sm text-slate-400">Open a crate to find a skin</div>
+                        <div class="flex gap-2 w-full">
+                            <button id="open-standard-btn" class="flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3 rounded-xl transition active:scale-95 cursor-pointer">OPEN CRATE <span class="text-xs font-bold">(1,000)</span></button>
+                            <button id="open-event-btn" class="hidden flex-1 bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black py-3 rounded-xl transition active:scale-95 cursor-pointer">EVENT CRATE</button>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-xs font-black uppercase tracking-wider text-slate-400 mb-2">Drop Odds</h3>
+                        <div id="odds-list" class="grid grid-cols-2 gap-x-6 gap-y-1 text-xs font-bold"></div>
+                    </div>
+                </div>
+
+                <div id="panel-skins" class="shop-panel hidden">
+                    <div id="skins-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-3"></div>
+                </div>
+
+                <div id="panel-market" class="shop-panel hidden">
+                    <div id="market-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+                </div>
+            </div>
+
+            <div id="shop-message" class="px-6 pb-4 text-sm font-bold min-h-[20px]"></div>
+        </div>
+    </div>
+
+    <!-- TAB LEADERBOARD OVERLAY (Visible ON HOLD TAB) -->
+    <div id="tab-leaderboard" class="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-45 hidden pointer-events-none flex items-center justify-center p-4 transition-opacity duration-150">
+        <div class="bg-slate-900/95 border border-emerald-500/50 w-full max-w-xl rounded-3xl p-6 shadow-2xl flex flex-col gap-4 max-h-[85vh] pointer-events-auto">
+            
+            <!-- Modal Header -->
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <div class="flex items-center gap-3">
+                    <div class="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-amber-400">
+                        <i class="fa-solid fa-trophy text-2xl"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-2xl font-black text-white tracking-wide flex items-center gap-2">
+                            LEADERBOARD
+                            <span class="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full font-extrabold uppercase">GLOBAL / ONLINE</span>
+                        </h2>
+                        <p class="text-xs text-slate-400">Global scores from every player. Hold <kbd class="bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700 font-bold">TAB</kbd> to view while playing!</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Table Header -->
+            <div class="grid grid-cols-12 text-[11px] font-extrabold text-slate-400 uppercase tracking-wider px-3 py-1">
+                <span class="col-span-2">Rank</span>
+                <span class="col-span-6">Muncher</span>
+                <span class="col-span-2 text-right">CPM</span>
+                <span class="col-span-2 text-right">Total</span>
+            </div>
+
+            <!-- Leaderboard Items Container -->
+            <div id="leaderboard-list" class="flex flex-col gap-2 overflow-y-auto pr-1 my-1 max-h-[50vh]"></div>
+
+            <!-- Leaderboard Footer Stats -->
+            <div class="flex justify-between items-center pt-3 border-t border-slate-800 text-xs text-slate-400">
+                <span>All-Time Total: <strong id="personal-best-display" class="text-amber-300 font-bold">0</strong></span>
+                <button id="reset-scores-btn" class="text-[11px] text-slate-400 hover:text-red-400 underline transition cursor-pointer">
+                    Reset Local Progress 
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN GAME SCRIPT -->
+    <script>
+        // --- ONLINE LEADERBOARD CONFIG ---
+        // Replace this with your Render service URL after deploying.
+        const API_BASE_URL = "https://YOUR-RENDER-SERVICE.onrender.com";
+
+        async function apiRequest(path, options = {}) {
+            if (API_BASE_URL.includes("YOUR-RENDER-SERVICE")) throw new Error("Add your Render URL to API_BASE_URL first.");
+            const response = await fetch(`${API_BASE_URL}${path}`, {
+                ...options,
+                headers: { "Content-Type": "application/json", ...(options.headers || {}) }
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || `Server error (${response.status})`);
+            return data;
+        }
+
+        let scoreSyncTimer = null;
+        function queueScoreSync() {
+            if (!gameState.playerName) return;
+            clearTimeout(scoreSyncTimer);
+            scoreSyncTimer = setTimeout(async () => {
+                try {
+                    await apiRequest("/api/score", { method: "POST", body: JSON.stringify({
+                        username: gameState.playerName, score: gameState.score, cpm: gameState.cpm
+                    }) });
+                    if (gameState.isTabHeld) renderTabLeaderboard();
+                } catch (error) { console.warn("Score sync failed:", error.message); }
+            }, 900);
+        }
+
+        async function loadOnlinePlayerScore(username) {
+            try {
+                const data = await apiRequest(`/api/player?username=${encodeURIComponent(username)}`);
+                gameState.score = Math.max(gameState.score, Number(data.score || 0));
+                savePlayerProgress();
+                updateHUD();
+                queueScoreSync();
+            } catch (error) { console.warn("Using this device's saved score:", error.message); }
+        }
+
+        // --- GAME CONFIG & PERSISTENT SAVED PROGRESS ---
+        const gameState = {
+            score: 0,
+            playerName: localStorage.getItem('cabbage_player_name') || '',
+            soundEnabled: true,
+            eatTimestamps: [],
+            cpm: 0,
+            gameStarted: false,
+            isTabHeld: false,
+            wallet: 0 // spendable cabbages for crates (score stays the leaderboard total)
+        };
+
+        const bgMusic = document.getElementById('bg-music');
+        bgMusic.volume = 0.45;
+
+        // Load saved progress for the current user
+        function loadPlayerProgress(username) {
+            if (!username) return 0;
+            const savedKey = `cabbage_progress_${username.toLowerCase()}`;
+            const savedValue = localStorage.getItem(savedKey);
+            return savedValue ? parseInt(savedValue, 10) : 0;
+        }
+
+        function savePlayerProgress() {
+            if (!gameState.playerName) return;
+            const savedKey = `cabbage_progress_${gameState.playerName.toLowerCase()}`;
+            localStorage.setItem(savedKey, gameState.score.toString());
+            queueScoreSync();
+        }
+
+        // Handle Initial Username Prompt
+        const usernameModal = document.getElementById('username-modal');
+        const usernameInput = document.getElementById('username-input');
+        const usernameForm = document.getElementById('username-form');
+
+        if (gameState.playerName) {
+            usernameInput.value = gameState.playerName;
+        }
+
+        usernameForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const chosen = usernameInput.value.trim().substring(0, 16);
+            if (chosen) {
+                gameState.playerName = chosen;
+                localStorage.setItem('cabbage_player_name', chosen);
+                document.getElementById('player-name-display').innerText = chosen;
+                
+                // Load existing cabbage count progress for this user
+                gameState.score = loadPlayerProgress(chosen);
+                loadEconomy(chosen);
+                updateHUD();
+
+                // Hide modal and start
+                usernameModal.classList.add('opacity-0', 'pointer-events-none');
+                setTimeout(() => usernameModal.style.display = 'none', 300);
+                gameState.gameStarted = true;
+                
+                // Play background loop music
+                if (gameState.soundEnabled) {
+                    bgMusic.play().catch(() => {});
+                }
+
+                requestLock();
+            }
+        });
+
+        // --- SYNTHESIZED AUDIO ENGINE (Web Audio API) ---
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.rainGain = null;
+                this.rainSource = null;
+                this.windGain = null;
+                this.windSource = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioContext();
+                    this.setupAmbience();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            setupAmbience() {
+                if (!this.ctx) return;
+                const bufferSize = this.ctx.sampleRate * 2;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+
+                // Rain Sound Generator
+                this.rainSource = this.ctx.createBufferSource();
+                this.rainSource.buffer = buffer;
+                this.rainSource.loop = true;
+                const rainFilter = this.ctx.createBiquadFilter();
+                rainFilter.type = 'lowpass';
+                rainFilter.frequency.setValueAtTime(1100, this.ctx.currentTime);
+                this.rainGain = this.ctx.createGain();
+                this.rainGain.gain.setValueAtTime(0, this.ctx.currentTime);
+                this.rainSource.connect(rainFilter);
+                rainFilter.connect(this.rainGain);
+                this.rainGain.connect(this.ctx.destination);
+                this.rainSource.start();
+
+                // Wind Sound Generator
+                this.windSource = this.ctx.createBufferSource();
+                this.windSource.buffer = buffer;
+                this.windSource.loop = true;
+                const windFilter = this.ctx.createBiquadFilter();
+                windFilter.type = 'bandpass';
+                windFilter.frequency.setValueAtTime(450, this.ctx.currentTime);
+                windFilter.Q.setValueAtTime(3.5, this.ctx.currentTime);
+                this.windGain = this.ctx.createGain();
+                this.windGain.gain.setValueAtTime(0, this.ctx.currentTime);
+                this.windSource.connect(windFilter);
+                windFilter.connect(this.windGain);
+                this.windGain.connect(this.ctx.destination);
+                this.windSource.start();
+            }
+
+            playCrunch() {
+                if (!gameState.soundEnabled) return;
+                this.init();
+
+                const now = this.ctx.currentTime;
+                
+                // Crisp Bite Crunch (Noise)
+                const bufferSize = this.ctx.sampleRate * 0.08;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(1500 + Math.random() * 900, now);
+                filter.Q.setValueAtTime(2.2, now);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.95, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.075);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                noise.start(now);
+
+                // Low Pitch Resonance
+                const osc = this.ctx.createOscillator();
+                const oscGain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(170 + Math.random() * 50, now);
+                osc.frequency.exponentialRampToValueAtTime(35, now + 0.07);
+
+                oscGain.gain.setValueAtTime(0.65, now);
+                oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.07);
+
+                osc.connect(oscGain);
+                oscGain.connect(this.ctx.destination);
+
+                osc.start(now);
+                osc.stop(now + 0.08);
+            }
+
+            playThunder() {
+                if (!gameState.soundEnabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(65, now);
+                osc.frequency.exponentialRampToValueAtTime(18, now + 1.3);
+
+                gain.gain.setValueAtTime(0.85, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 1.3);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 1.35);
+            }
+
+            updateAmbience(weatherType) {
+                if (!this.ctx || !this.rainGain || !this.windGain) return;
+                const now = this.ctx.currentTime;
+                const targetRain = (!gameState.soundEnabled) ? 0 : (weatherType === 'RAIN' ? 0.16 : (weatherType === 'THUNDERSTORM' ? 0.38 : 0));
+                const targetWind = (!gameState.soundEnabled) ? 0 : (weatherType === 'SNOW' ? 0.22 : (weatherType === 'THUNDERSTORM' ? 0.28 : 0));
+
+                this.rainGain.gain.setTargetAtTime(targetRain, now, 0.5);
+                this.windGain.gain.setTargetAtTime(targetWind, now, 0.5);
+            }
+        }
+
+        const sounds = new SoundEngine();
+
+        // --- THREE.JS SCENE & CAMERA SETUP ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0xa0e0ff, 0.012);
+
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 1000);
+        
+        // Player stands right on top of the 1x1x1 dirt block
+        const PLAYER_HEIGHT = 1.5;
+        camera.position.set(0, PLAYER_HEIGHT, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        container.appendChild(renderer.domElement);
+
+        // --- POINTER LOCK CONTROLS ---
+        let yaw = 0;
+        let pitch = 0;
+        let isPointerLocked = false;
+        const promptEl = document.getElementById('pointer-prompt');
+
+        function requestLock() {
+            if (!gameState.gameStarted) return;
+            container.requestPointerLock();
+            sounds.init();
+        }
+
+        container.addEventListener('click', () => {
+            if (!isPointerLocked && gameState.gameStarted) requestLock();
+        });
+        promptEl.addEventListener('click', requestLock);
+
+        document.addEventListener('pointerlockchange', () => {
+            if (document.pointerLockElement === container) {
+                isPointerLocked = true;
+                promptEl.style.opacity = '0';
+                promptEl.style.pointerEvents = 'none';
+            } else {
+                isPointerLocked = false;
+                if (gameState.gameStarted && !crateModalOpen && !pauseOpen) setPaused(true);
+                if (gameState.gameStarted) {
+                    promptEl.style.opacity = '1';
+                    promptEl.style.pointerEvents = 'auto';
+                }
+            }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isPointerLocked) return;
+
+            const sensitivity = 0.0022;
+            yaw -= e.movementX * sensitivity;
+            pitch -= e.movementY * sensitivity;
+
+            const maxPitch = Math.PI / 2.15;
+            pitch = Math.max(-maxPitch, Math.min(maxPitch, pitch));
+
+            camera.rotation.order = 'YXZ';
+            camera.rotation.y = yaw;
+            camera.rotation.x = pitch;
+        });
+
+        // --- LIGHTING & SUN/MOON ORBIT ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
+        scene.add(ambientLight);
+
+        const sunLight = new THREE.DirectionalLight(0xfffaed, 1.3);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        sunLight.shadow.camera.near = 0.5;
+        sunLight.shadow.camera.far = 150;
+        const d = 5;
+        sunLight.shadow.camera.left = -d;
+        sunLight.shadow.camera.right = d;
+        sunLight.shadow.camera.top = d;
+        sunLight.shadow.camera.bottom = -d;
+        scene.add(sunLight);
+
+        // Sun & Moon Orbs
+        const sunGeo = new THREE.SphereGeometry(2.2, 16, 16);
+        const sunMat = new THREE.MeshBasicMaterial({ color: 0xffdd66 });
+        const sunMesh = new THREE.Mesh(sunGeo, sunMat);
+        scene.add(sunMesh);
+
+        const moonGeo = new THREE.SphereGeometry(1.6, 16, 16);
+        const moonMat = new THREE.MeshBasicMaterial({ color: 0xe0e6ed });
+        const moonMesh = new THREE.Mesh(moonGeo, moonMat);
+        scene.add(moonMesh);
+
+        // --- SINGLE ISOLATED DIRT BLOCK ---
+        function createDirtTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#5c4028';
+            ctx.fillRect(0, 0, 64, 64);
+            for (let i = 0; i < 200; i++) {
+                ctx.fillStyle = Math.random() > 0.5 ? '#432c19' : '#735235';
+                ctx.fillRect(Math.floor(Math.random() * 64), Math.floor(Math.random() * 64), 3, 3);
+            }
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function createGrassTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#388e3c';
+            ctx.fillRect(0, 0, 64, 64);
+            for (let i = 0; i < 300; i++) {
+                ctx.fillStyle = Math.random() > 0.5 ? '#2e7d32' : '#4caf50';
+                ctx.fillRect(Math.floor(Math.random() * 64), Math.floor(Math.random() * 64), 2, 4);
+            }
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        const dirtTex = createDirtTexture();
+        dirtTex.magFilter = THREE.NearestFilter;
+        dirtTex.minFilter = THREE.NearestFilter;
+
+        const grassTex = createGrassTexture();
+        grassTex.magFilter = THREE.NearestFilter;
+        grassTex.minFilter = THREE.NearestFilter;
+
+        const dirtSideMat = new THREE.MeshStandardMaterial({ map: dirtTex, roughness: 0.9 });
+        const grassTopMat = new THREE.MeshStandardMaterial({ map: grassTex, roughness: 0.7 });
+
+        const blockMaterials = [
+            dirtSideMat,
+            dirtSideMat,
+            grassTopMat,
+            dirtSideMat,
+            dirtSideMat,
+            dirtSideMat
+        ];
+
+        const blockGeo = new THREE.BoxGeometry(1.0, 1.0, 1.0);
+        const singleDirtBlock = new THREE.Mesh(blockGeo, blockMaterials);
+        singleDirtBlock.position.set(0, 0, 0);
+        singleDirtBlock.receiveShadow = true;
+        singleDirtBlock.castShadow = true;
+        scene.add(singleDirtBlock);
+
+        // --- PROCEDURAL CABBAGE MODEL ---
+        const cabbageContainer = new THREE.Group();
+
+        let cabbageCoreMat = null;
+
+        function createCabbage() {
+            const group = new THREE.Group();
+            const coreGeo = new THREE.SphereGeometry(0.28, 16, 16);
+            const coreMat = new THREE.MeshStandardMaterial({ color: 0x81c784, roughness: 0.5 });
+            cabbageCoreMat = coreMat;
+            const core = new THREE.Mesh(coreGeo, coreMat);
+            group.add(core);
+
+            const leafGeo = new THREE.SphereGeometry(0.2, 12, 12, 0, Math.PI * 2, 0, Math.PI * 0.5);
+            const leafMat = new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 0.4, side: THREE.DoubleSide });
+
+            for (let i = 0; i < 14; i++) {
+                const leaf = new THREE.Mesh(leafGeo, leafMat);
+                leaf.scale.set(1.3, 1.0, 1.4);
+                const phi = Math.acos(-1 + (2 * i) / 14);
+                const theta = Math.sqrt(14 * Math.PI) * phi;
+
+                leaf.rotation.x = phi * 0.5;
+                leaf.rotation.y = theta;
+                leaf.position.set(Math.sin(phi) * Math.cos(theta) * 0.12, Math.cos(phi) * 0.08, Math.sin(phi) * Math.sin(theta) * 0.12);
+                group.add(leaf);
+            }
+            return group;
+        }
+
+        let cabbageMesh = createCabbage();
+        cabbageContainer.add(cabbageMesh);
+        cabbageContainer.position.set(0.24, -0.28, -0.5);
+        cabbageContainer.rotation.set(0.2, -0.3, 0.1);
+        camera.add(cabbageContainer);
+        scene.add(camera);
+
+        // --- PARTICLES: CRUMBS, WEATHER ---
+        const crumbsCount = 35;
+        const crumbsGeo = new THREE.DodecahedronGeometry(0.016, 0);
+        const crumbsMat = new THREE.MeshStandardMaterial({ color: 0x66bb6a });
+        const crumbsInstanced = new THREE.InstancedMesh(crumbsGeo, crumbsMat, crumbsCount);
+        const dummy = new THREE.Object3D();
+        const crumbParticles = Array.from({ length: crumbsCount }, () => ({ x: 0, y: -20, z: 0, vx: 0, vy: 0, vz: 0, life: 0 }));
+        scene.add(crumbsInstanced);
+
+        function triggerCrumbs() {
+            const spawnPos = new THREE.Vector3();
+            cabbageContainer.getWorldPosition(spawnPos);
+
+            crumbParticles.forEach(p => {
+                p.x = spawnPos.x + (Math.random() - 0.5) * 0.15;
+                p.y = spawnPos.y + (Math.random() - 0.5) * 0.15;
+                p.z = spawnPos.z + (Math.random() - 0.5) * 0.15;
+                p.vx = (Math.random() - 0.5) * 2.2;
+                p.vy = Math.random() * 1.8 + 0.3;
+                p.vz = (Math.random() - 0.5) * 2.2 - 0.4;
+                p.life = 1.0;
+            });
+        }
+
+        function updateCrumbs(delta) {
+            let active = false;
+            crumbParticles.forEach((p, i) => {
+                if (p.life > 0) {
+                    active = true;
+                    p.life -= delta * 2.5;
+                    p.x += p.vx * delta;
+                    p.y += p.vy * delta;
+                    p.z += p.vz * delta;
+                    p.vy -= 9.8 * delta;
+
+                    dummy.position.set(p.x, p.y, p.z);
+                    const s = Math.max(0, p.life);
+                    dummy.scale.set(s, s, s);
+                    dummy.updateMatrix();
+                    crumbsInstanced.setMatrixAt(i, dummy.matrix);
+                } else if (p.y > -10) {
+                    p.y = -20;
+                    dummy.position.set(0, -20, 0);
+                    dummy.updateMatrix();
+                    crumbsInstanced.setMatrixAt(i, dummy.matrix);
+                    active = true;
+                }
+            });
+            if (active) crumbsInstanced.instanceMatrix.needsUpdate = true;
+        }
+
+        const weatherParticleCount = 700;
+        const weatherGeo = new THREE.BufferGeometry();
+        const weatherPositions = new Float32Array(weatherParticleCount * 3);
+
+        for (let i = 0; i < weatherParticleCount; i++) {
+            weatherPositions[i * 3] = (Math.random() - 0.5) * 45;
+            weatherPositions[i * 3 + 1] = Math.random() * 30 - 5;
+            weatherPositions[i * 3 + 2] = (Math.random() - 0.5) * 45;
+        }
+        weatherGeo.setAttribute('position', new THREE.BufferAttribute(weatherPositions, 3));
+        const weatherMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.1, transparent: true, opacity: 0.65 });
+        const weatherPoints = new THREE.Points(weatherGeo, weatherMat);
+        scene.add(weatherPoints);
+
+        // --- DAY/NIGHT & WEATHER CYCLES ---
+        const DAY_NIGHT_DURATION = 120; // 2 Minutes
+        const WEATHER_DURATION = 60;   // 1 Minute
+
+        const WEATHER_TYPES = [
+            { name: 'CLEAR', icon: 'fa-sun', color: 'text-amber-400', border: 'border-cyan-500/40' },
+            { name: 'RAIN', icon: 'fa-cloud-rain', color: 'text-blue-400', border: 'border-blue-500/40' },
+            { name: 'FOG', icon: 'fa-smog', color: 'text-slate-300', border: 'border-slate-500/40' },
+            { name: 'THUNDERSTORM', icon: 'fa-bolt-lightning', color: 'text-purple-400', border: 'border-purple-500/40' },
+            { name: 'SNOW', icon: 'fa-snowflake', color: 'text-cyan-200', border: 'border-cyan-300/40' }
+        ];
+
+        let currentWeatherIndex = 0;
+        let weatherTimer = 0;
+        let dayNightTimer = 0;
+
+        function updateCycles(delta, time) {
+            dayNightTimer = (dayNightTimer + delta) % DAY_NIGHT_DURATION;
+            const dayProgress = dayNightTimer / DAY_NIGHT_DURATION;
+            const sunAngle = dayProgress * Math.PI * 2;
+
+            const radius = 55;
+            sunLight.position.x = Math.cos(sunAngle) * radius;
+            sunLight.position.y = Math.sin(sunAngle) * radius;
+            sunLight.position.z = 12;
+
+            sunMesh.position.copy(sunLight.position);
+            moonMesh.position.set(-sunLight.position.x, -sunLight.position.y, -sunLight.position.z);
+
+            const isDay = sunLight.position.y > 0;
+            const sunHeight = Math.max(-1, Math.min(1, sunLight.position.y / radius));
+            
+            let skyColor, fogColor, lightColor, lightIntensity;
+
+            if (sunHeight > 0.2) {
+                skyColor = new THREE.Color(0x7ec0ee);
+                fogColor = new THREE.Color(0xa0e0ff);
+                lightColor = new THREE.Color(0xfffaed);
+                lightIntensity = 1.35;
+            } else if (sunHeight > -0.1) {
+                skyColor = new THREE.Color(0xd96b43);
+                fogColor = new THREE.Color(0xe28d6c);
+                lightColor = new THREE.Color(0xffaa55);
+                lightIntensity = 0.85;
+            } else {
+                skyColor = new THREE.Color(0x0a0f1d);
+                fogColor = new THREE.Color(0x0c1326);
+                lightColor = new THREE.Color(0x5c72a6);
+                lightIntensity = 0.25;
+            }
+
+            const currentW = WEATHER_TYPES[currentWeatherIndex].name;
+            if (currentW === 'FOG') {
+                fogColor.lerp(new THREE.Color(0x8090a0), 0.75);
+                scene.fog.density = 0.05;
+            } else if (currentW === 'THUNDERSTORM') {
+                skyColor.lerp(new THREE.Color(0x111625), 0.8);
+                scene.fog.density = 0.025;
+            } else {
+                scene.fog.density = 0.012;
+            }
+
+            scene.background = skyColor;
+            scene.fog.color = fogColor;
+            sunLight.color = lightColor;
+            sunLight.intensity = lightIntensity;
+            ambientLight.intensity = isDay ? 0.45 : 0.18;
+
+            const totalHours = (dayProgress * 24 + 6) % 24;
+            const hours = Math.floor(totalHours);
+            const minutes = Math.floor((totalHours % 1) * 60);
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            const displayHours = hours % 12 === 0 ? 12 : hours % 12;
+            const formattedTime = `${displayHours}:${minutes < 10 ? '0' : ''}${minutes} ${ampm}`;
+
+            document.getElementById('clock-display').innerText = formattedTime;
+            document.getElementById('clock-icon').className = isDay ? 'fa-solid fa-sun text-amber-400' : 'fa-solid fa-moon text-indigo-300';
+            document.getElementById('phase-display').innerText = isDay ? 'DAY' : 'NIGHT';
+
+            weatherTimer += delta;
+            if (weatherTimer >= WEATHER_DURATION) {
+                weatherTimer = 0;
+                currentWeatherIndex = (currentWeatherIndex + 1) % WEATHER_TYPES.length;
+                updateWeatherHUD();
+            }
+
+            const pos = weatherGeo.attributes.position.array;
+            if (currentW === 'RAIN' || currentW === 'THUNDERSTORM') {
+                weatherPoints.visible = true;
+                weatherMat.size = 0.08;
+                weatherMat.color.setHex(0x90caf9);
+                for (let i = 0; i < weatherParticleCount; i++) {
+                    pos[i * 3 + 1] -= 28 * delta;
+                    if (pos[i * 3 + 1] < -10) pos[i * 3 + 1] = 25;
+                }
+                weatherGeo.attributes.position.needsUpdate = true;
+            } else if (currentW === 'SNOW') {
+                weatherPoints.visible = true;
+                weatherMat.size = 0.18;
+                weatherMat.color.setHex(0xffffff);
+                for (let i = 0; i < weatherParticleCount; i++) {
+                    pos[i * 3 + 1] -= 3.5 * delta;
+                    pos[i * 3] += Math.sin(time + i) * 0.9 * delta;
+                    if (pos[i * 3 + 1] < -10) pos[i * 3 + 1] = 25;
+                }
+                weatherGeo.attributes.position.needsUpdate = true;
+            } else {
+                weatherPoints.visible = false;
+            }
+
+            if (currentW === 'THUNDERSTORM' && Math.random() < 0.005) {
+                const flash = document.getElementById('lightning-flash');
+                flash.style.opacity = '0.95';
+                sounds.playThunder();
+                setTimeout(() => { flash.style.opacity = '0'; }, 90);
+            }
+
+            sounds.updateAmbience(currentW);
+        }
+
+        function updateWeatherHUD() {
+            const w = WEATHER_TYPES[currentWeatherIndex];
+            document.getElementById('weather-display').innerText = w.name;
+            document.getElementById('weather-icon').className = `fa-solid ${w.icon} ${w.color}`;
+            const badge = document.getElementById('weather-badge');
+            badge.className = `bg-slate-900/85 backdrop-blur-md border ${w.border} px-3.5 py-1.5 rounded-xl shadow-lg flex items-center gap-2 text-xs font-extrabold text-cyan-300`;
+        }
+
+        // --- EATING & CPM LOGIC WITH SAVE SYNC ---
+        let eatAnimProgress = 1.0;
+
+        function eatCabbage() {
+            if (!gameState.gameStarted || crateModalOpen || pauseOpen) return;
+            eatAnimProgress = 0.0;
+            sounds.playCrunch();
+            triggerCrumbs();
+            spawnFloatingText("+1 Cabbage");
+
+            // Increment score and save persistently
+            gameState.score++;
+            savePlayerProgress();
+            // 3 wallet cabbages per 5 eaten, spread evenly so each bite gives 0 or 1
+            gameState.wallet += Math.floor((3 * gameState.score) / 5) - Math.floor((3 * (gameState.score - 1)) / 5);
+            saveEconomy();
+            updateWalletHUD();
+
+            const now = performance.now();
+            gameState.eatTimestamps.push(now);
+
+            updateHUD();
+            if (gameState.isTabHeld) renderTabLeaderboard();
+        }
+
+        function spawnFloatingText(text) {
+            const container = document.getElementById('pop-text-container');
+            const el = document.createElement('div');
+            el.className = 'pop-text absolute font-black text-2xl sm:text-3xl text-emerald-400 drop-shadow-[0_4px_8px_rgba(0,0,0,0.95)] pointer-events-none';
+            el.innerText = text;
+
+            const rx = window.innerWidth / 2 + (Math.random() - 0.5) * 160;
+            const ry = window.innerHeight / 2 + (Math.random() - 0.5) * 100;
+            el.style.left = `${rx}px`;
+            el.style.top = `${ry}px`;
+
+            container.appendChild(el);
+            setTimeout(() => { if (container.contains(el)) container.removeChild(el); }, 750);
+        }
+
+        function updateHUD() {
+            document.getElementById('score-display').innerText = gameState.score.toLocaleString();
+        }
+
+        function calculateCPM() {
+            const now = performance.now();
+            gameState.eatTimestamps = gameState.eatTimestamps.filter(t => now - t <= 10000);
+            gameState.cpm = Math.round((gameState.eatTimestamps.length / 10.0) * 60);
+            document.getElementById('cpm-display').innerText = gameState.cpm;
+        }
+
+        // --- HOLD-TAB LEADERBOARD OVERLAY ---
+        const tabLeaderboardEl = document.getElementById('tab-leaderboard');
+
+        function setTabLeaderboardVisible(visible) {
+            if (!gameState.gameStarted) return;
+            gameState.isTabHeld = visible;
+            if (visible) {
+                renderTabLeaderboard();
+                tabLeaderboardEl.classList.remove('hidden');
+            } else {
+                tabLeaderboardEl.classList.add('hidden');
+            }
+        }
+
+        async function renderTabLeaderboard() {
+            const list = document.getElementById('leaderboard-list');
+            list.innerHTML = '<div class="text-center text-slate-400 py-6 font-bold">Loading global munchers...</div>';
+            document.getElementById('personal-best-display').innerText = gameState.score.toLocaleString();
+            try {
+                const data = await apiRequest("/api/leaderboard");
+                const players = data.leaderboard || [];
+                list.innerHTML = "";
+                if (!players.length) {
+                    list.innerHTML = '<div class="text-center text-slate-400 py-6">No munchers yet. Be the first!</div>';
+                    return;
+                }
+                players.forEach((player, index) => {
+                    const isYou = player.username.toLowerCase() === (gameState.playerName || "").toLowerCase();
+                    const item = document.createElement('div');
+                    item.className = `grid grid-cols-12 items-center p-3 rounded-xl border text-white font-bold ${
+                        isYou ? 'bg-emerald-500/15 border-emerald-500/60 ring-1 ring-emerald-500/40' : 'bg-slate-800/70 border-slate-700'
+                    }`;
+                    const rankIcon = index === 0 ? '<i class="fa-solid fa-crown text-amber-400"></i>' : `#${index + 1}`;
+                    item.innerHTML = `
+                        <div class="col-span-2"><span class="text-amber-300 font-extrabold flex items-center gap-1">${rankIcon}</span></div>
+                        <div class="col-span-6 flex items-center gap-2 truncate">
+                            <span class="truncate ${isYou ? 'text-emerald-400' : 'text-white'} font-black">${escapeHTML(player.username)}</span>
+                            ${isYou ? '<span class="text-[9px] bg-emerald-500 text-slate-950 font-black px-1.5 py-0.5 rounded">YOU</span>' : ''}
+                        </div>
+                        <div class="col-span-2 text-right font-extrabold text-amber-300">${Number(player.cpm || 0).toLocaleString()}</div>
+                        <div class="col-span-2 text-right font-black text-white">${Number(player.score || 0).toLocaleString()}</div>
+                    `;
+                    list.appendChild(item);
+                });
+            } catch (error) {
+                list.innerHTML = `<div class="text-center text-red-300 py-6 text-sm">Online leaderboard unavailable.<br>${escapeHTML(error.message)}</div>`;
+            }
+        }
+
+        function escapeHTML(str) {
+            return str.replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
+        }
+
+        // --- KEY & MOUSE EVENT LISTENERS (EAT WHILE HOLDING TAB) ---
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab') {
+                e.preventDefault(); // Prevent browser focusing off the canvas
+                if (!gameState.isTabHeld) {
+                    setTabLeaderboardVisible(true);
+                }
+            }
+
+            if (e.key === 'e' || e.key === 'E') {
+                eatCabbage();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                setTabLeaderboardVisible(false);
+            }
+        });
+
+        document.addEventListener('mousedown', (e) => {
+            if (isPointerLocked && e.button === 0) {
+                eatCabbage();
+            }
+        });
+
+        // UI Action Buttons
+        document.getElementById('sound-btn').addEventListener('click', () => {
+            gameState.soundEnabled = !gameState.soundEnabled;
+            document.getElementById('sound-icon').className = gameState.soundEnabled ? 'fa-solid fa-volume-high text-emerald-400' : 'fa-solid fa-volume-xmark text-slate-500';
+            sounds.updateAmbience(WEATHER_TYPES[currentWeatherIndex].name);
+            
+            if (gameState.soundEnabled) {
+                bgMusic.play().catch(() => {});
+            } else {
+                bgMusic.pause();
+            }
+        });
+
+        document.getElementById('edit-name-btn').addEventListener('click', () => {
+            const name = prompt("Enter Muncher Name:", gameState.playerName);
+            if (name && name.trim().length > 0) {
+                gameState.playerName = name.trim().substring(0, 16);
+                localStorage.setItem('cabbage_player_name', gameState.playerName);
+                document.getElementById('player-name-display').innerText = gameState.playerName;
+                
+                // Load saved progress for the newly switched user profile
+                gameState.score = loadPlayerProgress(gameState.playerName);
+                loadEconomy(gameState.playerName);
+                updateHUD();
+                loadOnlinePlayerScore(gameState.playerName);
+                if (gameState.isTabHeld) renderTabLeaderboard();
+            }
+        });
+
+        document.getElementById('reset-scores-btn').addEventListener('click', () => {
+            if (confirm(`Reset LOCAL cabbage progress for ${gameState.playerName}? Your online leaderboard best score will stay unchanged.`)) {
+                gameState.score = 0;
+                savePlayerProgress();
+                updateHUD();
+                if (gameState.isTabHeld) renderTabLeaderboard();
+            }
+        });
+
+        // --- MUNCHER SHOP: CRATES, SKINS, MARKET & WALLET ---
+        const CRATE_COST = 1000;
+
+        // Halving chain: each rarity is half the one before. Weights sum to exactly 100.
+        const RARITIES = [
+            { id: 'common',    name: 'Common',     color: '#9ca3af', weight: 50 },
+            { id: 'rare',      name: 'Rare',       color: '#3b82f6', weight: 25 },
+            { id: 'superRare', name: 'Super Rare', color: '#8b5cf6', weight: 12.5 },
+            { id: 'epic',      name: 'Epic',       color: '#ec4899', weight: 6.25 },
+            { id: 'legendary', name: 'Legendary',  color: '#f59e0b', weight: 3.125 },
+            { id: 'mythic',    name: 'Mythic',     color: '#14b8a6', weight: 1.5625 },
+            { id: 'wicked',    name: 'Wicked',     color: '#ef4444', weight: 1.5625 }
+        ];
+        const EVENT_RARITY = { id: 'event', name: 'Event', color: '#22d3ee' };
+
+        // The original cabbage colour. Crates never drop it. It is always available as "Original" in the Skins tab.
+        const ORIGINAL_TINT = 0x81c784;
+
+        // tint = cabbage core colour when equipped
+        const SKINS = [
+            { id: 'lilac_leaf',    name: 'Lilac Leaf',    rarity: 'common',    tint: 0xce93d8 },
+            { id: 'peach_heart',   name: 'Peach Heart',   rarity: 'common',    tint: 0xffab91 },
+            { id: 'speckled',      name: 'Speckled',      rarity: 'rare',      tint: 0x4db6ac },
+            { id: 'frost_tip',     name: 'Frost Tip',     rarity: 'rare',      tint: 0xb3e5fc },
+            { id: 'gold_veins',    name: 'Gold Veins',    rarity: 'superRare', tint: 0xfdd835 },
+            { id: 'neon_core',     name: 'Neon Core',     rarity: 'epic',      tint: 0x69f0ae },
+            { id: 'royal_crown',   name: 'Royal Crown',   rarity: 'legendary', tint: 0xffb300 },
+            { id: 'ghost_stalk',   name: 'Ghost Stalk',   rarity: 'mythic',    tint: 0xe0e0e0 },
+            { id: 'cabbage_demon', name: 'Cabbage Demon', rarity: 'wicked',    tint: 0xb71c1c }
+        ];
+
+        // Event skins only drop from the event crate while an event is live
+        const EVENT_SKINS = [
+            { id: 'event_placeholder', name: 'Event Placeholder', rarity: 'event', tint: 0xff80ab }
+        ];
+        let eventActive = false;
+
+        // Cabbage parody companies on the market
+        const COMPANIES = [
+            { ticker: 'CBGE', name: 'Cabbage Corp',     start: 120, vol: 0.06 },
+            { ticker: 'LEAF', name: 'Leafy Labs',       start: 80,  vol: 0.08 },
+            { ticker: 'CRNC', name: 'Crunchy Holdings', start: 200, vol: 0.05 },
+            { ticker: 'SPRT', name: 'Sprout Dynamics',  start: 45,  vol: 0.12 },
+            { ticker: 'HEAD', name: 'Head Ventures',    start: 310, vol: 0.04 }
+        ];
+        const MARKET_TICK = 4; // seconds between price moves
+
+        // --- STATE ---
+        let inventory = [];          // owned skin ids (duplicates allowed)
+        let equippedSkinId = null;   // null = Original
+        let portfolio = {};          // ticker -> { shares, cost }
+        let marketPrices = {};       // ticker -> { price, history[] }
+        let marketTimer = 0;
+        let crateModalOpen = false;
+        let shopTab = 'crates';
+        let crateFromPause = false;
+        let pauseOpen = false;
+
+        const rarityById = id => (id === 'event' ? EVENT_RARITY : RARITIES.find(r => r.id === id));
+        const findSkin = id => [...SKINS, ...EVENT_SKINS].find(s => s.id === id) || null;
+        const pickRandom = arr => arr[Math.floor(Math.random() * arr.length)];
+        const tintHex = t => '#' + t.toString(16).padStart(6, '0');
+        const parseJSON = (str, fallback) => {
+            try { return JSON.parse(str) ?? fallback; } catch (e) { return fallback; }
+        };
+
+        function rollRarity() {
+            const total = RARITIES.reduce((s, r) => s + r.weight, 0);
+            let roll = Math.random() * total;
+            for (const r of RARITIES) {
+                if ((roll -= r.weight) < 0) return r;
+            }
+            return RARITIES[RARITIES.length - 1];
+        }
+
+        // --- PER-PLAYER SAVE (wallet, skins, portfolio) ---
+        function loadEconomy(name) {
+            const key = name.toLowerCase();
+            gameState.wallet = parseInt(localStorage.getItem(`cabbage_wallet_${key}`) || '0', 10);
+            inventory = parseJSON(localStorage.getItem(`cabbage_inventory_${key}`), []);
+            portfolio = parseJSON(localStorage.getItem(`cabbage_portfolio_${key}`), {});
+            equippedSkinId = localStorage.getItem(`cabbage_equipped_${key}`) || null;
+            applyEquippedSkin();
+            updateWalletHUD();
+        }
+
+        function saveEconomy() {
+            if (!gameState.playerName) return;
+            const key = gameState.playerName.toLowerCase();
+            localStorage.setItem(`cabbage_wallet_${key}`, String(gameState.wallet));
+            localStorage.setItem(`cabbage_inventory_${key}`, JSON.stringify(inventory));
+            localStorage.setItem(`cabbage_portfolio_${key}`, JSON.stringify(portfolio));
+            localStorage.setItem(`cabbage_equipped_${key}`, equippedSkinId || '');
+        }
+
+        function applyEquippedSkin() {
+            if (!cabbageCoreMat) return;
+            const skin = findSkin(equippedSkinId);
+            cabbageCoreMat.color.setHex(skin ? skin.tint : ORIGINAL_TINT);
+        }
+
+        function updateWalletHUD() {
+            document.getElementById('wallet-display').innerText = gameState.wallet.toLocaleString();
+        }
+
+        function setCabbageEvent(active) {
+            eventActive = active;
+            if (crateModalOpen) renderShop();
+        }
+
+        function showCrateResult(html) {
+            const el = document.getElementById('crate-result');
+            el.innerHTML = html;
+            el.classList.remove('crate-reveal');
+            void el.offsetWidth; // restart animation
+            el.classList.add('crate-reveal');
+        }
+
+        function setShopMessage(text, tone) {
+            const el = document.getElementById('shop-message');
+            el.innerText = text;
+            el.style.color = tone === 'bad' ? '#f87171' : '#34d399';
+        }
+
+        // --- CRATES ---
+        function openCrate(type) {
+            const isEvent = type === 'event';
+            if (isEvent && (!eventActive || EVENT_SKINS.length === 0)) {
+                return showCrateResult('<span class="text-slate-400">The event crate is not available right now.</span>');
+            }
+            if (gameState.wallet < CRATE_COST) {
+                return showCrateResult(`<span class="text-red-400 font-bold">Not enough cabbages. You need ${CRATE_COST.toLocaleString()}.</span>`);
+            }
+
+            let rarity, skin;
+            if (isEvent) {
+                rarity = EVENT_RARITY;
+                skin = pickRandom(EVENT_SKINS);
+            } else {
+                rarity = rollRarity();
+                skin = pickRandom(SKINS.filter(s => s.rarity === rarity.id));
+            }
+
+            gameState.wallet -= CRATE_COST;
+            inventory.push(skin.id);
+            saveEconomy();
+            updateWalletHUD();
+            renderShop();
+
+            showCrateResult(`
+                <div class="text-center">
+                    <div class="text-[11px] uppercase font-black tracking-widest" style="color:${rarity.color}">${rarity.name}</div>
+                    <div class="text-2xl font-black" style="color:${rarity.color}">${escapeHTML(skin.name)}</div>
+                    <div class="text-xs text-slate-400 mt-1">Added to your skins</div>
+                </div>
+            `);
+        }
+
+        function renderCrates() {
+            document.getElementById('odds-list').innerHTML = RARITIES.map(r =>
+                `<div class="flex justify-between" style="color:${r.color}"><span>${r.name}</span><span>${r.weight}%</span></div>`
+            ).join('');
+        }
+
+        // --- SKINS ---
+        function equipSkin(id) {
+            equippedSkinId = id;
+            applyEquippedSkin();
+            saveEconomy();
+            renderSkins();
+        }
+
+        function renderSkins() {
+            const grid = document.getElementById('skins-grid');
+            const counts = {};
+            inventory.forEach(id => { counts[id] = (counts[id] || 0) + 1; });
+
+            const cards = [{ id: null, name: 'Original', tint: ORIGINAL_TINT, tier: 'Default', color: tintHex(ORIGINAL_TINT), count: 1 }];
+            Object.keys(counts).forEach(id => {
+                const s = findSkin(id);
+                if (!s) return;
+                const r = rarityById(s.rarity);
+                cards.push({ id, name: s.name, tint: s.tint, tier: r.name, color: r.color, count: counts[id] });
+            });
+
+            grid.innerHTML = cards.map(c => {
+                const on = equippedSkinId === c.id;
+                return `
+                <div class="rounded-2xl border-2 p-3 flex flex-col gap-2 bg-slate-800/70" style="border-color:${c.color}">
+                    <div class="h-16 rounded-xl border border-white/10" style="background:${tintHex(c.tint)}"></div>
+                    <div class="font-black text-sm truncate" style="color:${c.color}">${escapeHTML(c.name)}${c.count > 1 ? ' x' + c.count : ''}</div>
+                    <div class="text-[10px] uppercase tracking-wider text-slate-400">${c.tier}</div>
+                    <button data-skin="${c.id || ''}" class="skin-equip-btn w-full text-xs font-bold py-2 rounded-lg cursor-pointer transition ${on ? 'bg-emerald-500 text-slate-950' : 'bg-slate-700 hover:bg-slate-600 text-white'}">${on ? 'Equipped' : 'Equip'}</button>
+                </div>`;
+            }).join('');
+        }
+
+        // --- MARKET ---
+        function initMarket() {
+            marketPrices = parseJSON(localStorage.getItem('cabbage_market'), {});
+            COMPANIES.forEach(c => {
+                if (!marketPrices[c.ticker]) marketPrices[c.ticker] = { price: c.start, history: [c.start] };
+            });
+        }
+
+        function saveMarket() {
+            localStorage.setItem('cabbage_market', JSON.stringify(marketPrices));
+        }
+
+        function tickMarket(delta) {
+            marketTimer += delta;
+            if (marketTimer < MARKET_TICK) return;
+            marketTimer = 0;
+
+            COMPANIES.forEach(c => {
+                const m = marketPrices[c.ticker];
+                // random walk with a slight pull back toward the starting price
+                const pull = ((c.start - m.price) / c.start) * 0.02;
+                const change = (Math.random() - 0.5) * 2 * c.vol + pull;
+                m.price = Math.max(1, Math.round(m.price * (1 + change) * 100) / 100);
+                m.history.push(m.price);
+                if (m.history.length > 40) m.history.shift();
+            });
+
+            saveMarket();
+            if (crateModalOpen && shopTab === 'market') renderMarket();
+        }
+
+        function buyShares(ticker, qty) {
+            const cost = Math.ceil(marketPrices[ticker].price * qty);
+            if (gameState.wallet < cost) {
+                return setShopMessage(`Not enough cabbages. ${qty} share(s) cost ${cost.toLocaleString()}.`, 'bad');
+            }
+            gameState.wallet -= cost;
+            const p = portfolio[ticker] || { shares: 0, cost: 0 };
+            p.shares += qty;
+            p.cost += cost;
+            portfolio[ticker] = p;
+            afterTrade(`Bought ${qty} ${ticker} for ${cost.toLocaleString()}.`);
+        }
+
+        function sellShares(ticker, qty) {
+            const p = portfolio[ticker];
+            if (!p || p.shares < qty) return setShopMessage('You do not own that many shares.', 'bad');
+            const proceeds = Math.floor(marketPrices[ticker].price * qty);
+            p.cost -= p.cost * (qty / p.shares);
+            p.shares -= qty;
+            if (p.shares === 0) delete portfolio[ticker];
+            gameState.wallet += proceeds;
+            afterTrade(`Sold ${qty} ${ticker} for ${proceeds.toLocaleString()}.`);
+        }
+
+        function afterTrade(msg) {
+            saveEconomy();
+            updateWalletHUD();
+            renderShop();
+            setShopMessage(msg, 'good');
+        }
+
+        function sparkline(points, color) {
+            if (points.length < 2) return '<div class="h-12"></div>';
+            const w = 260, h = 48;
+            const min = Math.min(...points), max = Math.max(...points);
+            const range = (max - min) || 1;
+            const step = w / (points.length - 1);
+            const d = points.map((v, i) => `${(i * step).toFixed(1)},${(h - ((v - min) / range) * (h - 6) - 3).toFixed(1)}`).join(' ');
+            return `<svg viewBox="0 0 ${w} ${h}" class="w-full h-12" preserveAspectRatio="none"><polyline points="${d}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>`;
+        }
+
+        function renderMarket() {
+            document.getElementById('market-list').innerHTML = COMPANIES.map(c => {
+                const m = marketPrices[c.ticker];
+                const prev = m.history.length > 1 ? m.history[m.history.length - 2] : m.price;
+                const pct = ((m.price - prev) / prev) * 100;
+                const color = pct >= 0 ? '#34d399' : '#f87171';
+                const p = portfolio[c.ticker];
+                const shares = p ? p.shares : 0;
+                const value = p ? Math.floor(m.price * p.shares) : 0;
+                const pl = p ? value - Math.round(p.cost) : 0;
+                const plColor = pl >= 0 ? '#34d399' : '#f87171';
+
+                return `
+                <div class="bg-slate-800/70 border border-slate-700 rounded-2xl p-4 flex flex-col gap-3">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <div class="font-black text-white">${escapeHTML(c.name)}</div>
+                            <div class="text-[10px] font-bold text-slate-400 tracking-widest">${c.ticker}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="font-black text-lg text-white">${m.price.toFixed(2)}</div>
+                            <div class="text-xs font-bold" style="color:${color}">${pct >= 0 ? '&#9650;' : '&#9660;'} ${Math.abs(pct).toFixed(2)}%</div>
+                        </div>
+                    </div>
+                    ${sparkline(m.history, color)}
+                    <div class="flex justify-between text-xs text-slate-400">
+                        <span>Owned <strong class="text-white">${shares}</strong></span>
+                        <span>Value <strong class="text-white">${value.toLocaleString()}</strong></span>
+                        <span>P/L <strong style="color:${plColor}">${pl >= 0 ? '+' : ''}${pl.toLocaleString()}</strong></span>
+                    </div>
+                    <div class="grid grid-cols-4 gap-2">
+                        <button data-trade="buy" data-ticker="${c.ticker}" data-qty="1" class="trade-btn bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black py-2 rounded-lg transition active:scale-95 cursor-pointer">Buy 1</button>
+                        <button data-trade="buy" data-ticker="${c.ticker}" data-qty="10" class="trade-btn bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black py-2 rounded-lg transition active:scale-95 cursor-pointer">Buy 10</button>
+                        <button data-trade="sell" data-ticker="${c.ticker}" data-qty="1" class="trade-btn bg-slate-700 hover:bg-slate-600 text-white text-xs font-black py-2 rounded-lg transition active:scale-95 cursor-pointer">Sell 1</button>
+                        <button data-trade="sell-all" data-ticker="${c.ticker}" class="trade-btn bg-red-500/80 hover:bg-red-500 text-white text-xs font-black py-2 rounded-lg transition active:scale-95 cursor-pointer">Sell All</button>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        // --- SHOP WINDOW & TABS ---
+        function renderShop() {
+            document.getElementById('crate-balance').innerText = gameState.wallet.toLocaleString();
+            document.getElementById('open-event-btn').classList.toggle('hidden', !eventActive);
+            if (shopTab === 'crates') renderCrates();
+            if (shopTab === 'skins') renderSkins();
+            if (shopTab === 'market') renderMarket();
+        }
+
+        function setShopTab(tab) {
+            shopTab = tab;
+            document.querySelectorAll('.shop-tab').forEach(b => {
+                const on = b.dataset.tab === tab;
+                b.className = 'shop-tab flex-1 py-2.5 rounded-xl font-black text-sm transition cursor-pointer ' +
+                    (on ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700');
+            });
+            ['crates', 'skins', 'market'].forEach(t => {
+                document.getElementById(`panel-${t}`).classList.toggle('hidden', t !== tab);
+            });
+            renderShop();
+        }
+
+        function openCrateModal() {
+            crateModalOpen = true;
+            const modal = document.getElementById('crate-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            setShopTab(shopTab);
+            document.exitPointerLock();
+        }
+
+        function closeCrateModal() {
+            crateModalOpen = false;
+            const modal = document.getElementById('crate-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            if (crateFromPause) {
+                crateFromPause = false;
+                setPaused(true);
+            } else {
+                requestLock();
+            }
+        }
+
+        // --- PAUSE MENU (P) ---
+        function setPaused(on) {
+            pauseOpen = on;
+            const menu = document.getElementById('pause-menu');
+            menu.classList.toggle('hidden', !on);
+            menu.classList.toggle('flex', on);
+            if (on) document.exitPointerLock();
+            else requestLock();
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key.toLowerCase() !== 'p' || e.repeat || !gameState.gameStarted || crateModalOpen) return;
+            if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+            setPaused(!pauseOpen);
+        });
+
+        document.getElementById('pause-resume-btn').addEventListener('click', () => setPaused(false));
+        document.getElementById('pause-crates-btn').addEventListener('click', () => {
+            crateFromPause = true;
+            pauseOpen = false;
+            document.getElementById('pause-menu').classList.add('hidden');
+            document.getElementById('pause-menu').classList.remove('flex');
+            openCrateModal();
+        });
+        document.getElementById('pause-sound-btn').addEventListener('click', () => document.getElementById('sound-btn').click());
+        document.getElementById('pause-name-btn').addEventListener('click', () => document.getElementById('edit-name-btn').click());
+        document.getElementById('pause-reset-btn').addEventListener('click', () => document.getElementById('reset-scores-btn').click());
+
+        // --- SHOP WIRING ---
+        document.getElementById('crate-btn').addEventListener('click', openCrateModal);
+        document.getElementById('crate-close-btn').addEventListener('click', closeCrateModal);
+        document.getElementById('open-standard-btn').addEventListener('click', () => openCrate('standard'));
+        document.getElementById('open-event-btn').addEventListener('click', () => openCrate('event'));
+        document.querySelectorAll('.shop-tab').forEach(b => b.addEventListener('click', () => setShopTab(b.dataset.tab)));
+
+        document.getElementById('skins-grid').addEventListener('click', (e) => {
+            const btn = e.target.closest('.skin-equip-btn');
+            if (btn) equipSkin(btn.dataset.skin || null);
+        });
+
+        document.getElementById('market-list').addEventListener('click', (e) => {
+            const btn = e.target.closest('.trade-btn');
+            if (!btn) return;
+            const ticker = btn.dataset.ticker;
+            if (btn.dataset.trade === 'buy') {
+                buyShares(ticker, parseInt(btn.dataset.qty, 10));
+            } else if (btn.dataset.trade === 'sell') {
+                sellShares(ticker, parseInt(btn.dataset.qty, 10));
+            } else {
+                const owned = portfolio[ticker] ? portfolio[ticker].shares : 0;
+                if (owned > 0) sellShares(ticker, owned);
+                else setShopMessage('You do not own any shares of that company.', 'bad');
+            }
+        });
+
+        initMarket();
+
+        // --- MAIN ANIMATION LOOP ---
+
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+            const time = clock.getElapsedTime();
+
+            calculateCPM();
+            updateCycles(delta, time);
+            tickMarket(delta);
+
+            const idleX = Math.sin(time * 1.5) * 0.01;
+            const idleY = Math.cos(time * 2.0) * 0.01;
+
+            if (eatAnimProgress < 1.0) {
+                eatAnimProgress += delta * 7.5;
+                const phase = Math.sin(eatAnimProgress * Math.PI);
+                const scaleSquish = 1.0 - phase * 0.32;
+                const biteY = -phase * 0.13;
+                const biteZ = phase * 0.09;
+
+                cabbageContainer.scale.set(scaleSquish, scaleSquish, scaleSquish);
+                cabbageContainer.position.set(0.24 + idleX, -0.28 + idleY + biteY, -0.5 + biteZ);
+            } else {
+                cabbageContainer.scale.set(1.0, 1.0, 1.0);
+                cabbageContainer.position.set(0.24 + idleX, -0.28 + idleY, -0.5);
+            }
+
+            updateCrumbs(delta);
+            renderer.render(scene, camera);
+        }
+
+        // Window resize listener
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        updateHUD();
+        updateWeatherHUD();
+
+        window.onload = function() {
+            animate();
+        };
+    </script>
+</body>
+</html>
