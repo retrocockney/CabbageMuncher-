@@ -269,9 +269,9 @@
                     <div>
                         <h2 class="text-2xl font-black text-white tracking-wide flex items-center gap-2">
                             LEADERBOARD
-                            <span class="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full font-extrabold uppercase">GLOBAL / ONLINE</span>
+                            <span id="leaderboard-status" class="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full font-extrabold uppercase">ONLINE SHARED</span>
                         </h2>
-                        <p class="text-xs text-slate-400">Global scores from every player. Hold <kbd class="bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700 font-bold">TAB</kbd> to view while playing!</p>
+                        <p class="text-xs text-slate-400">Hold <kbd class="bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700 font-bold">TAB</kbd> to view while playing!</p>
                     </div>
                 </div>
             </div>
@@ -291,7 +291,7 @@
             <div class="flex justify-between items-center pt-3 border-t border-slate-800 text-xs text-slate-400">
                 <span>All-Time Total: <strong id="personal-best-display" class="text-amber-300 font-bold">0</strong></span>
                 <button id="reset-scores-btn" class="text-[11px] text-slate-400 hover:text-red-400 underline transition cursor-pointer">
-                    Reset Local Progress 
+                    Reset Progress Data 
                 </button>
             </div>
         </div>
@@ -299,43 +299,81 @@
 
     <!-- MAIN GAME SCRIPT -->
     <script>
-        // --- ONLINE LEADERBOARD CONFIG ---
-        // Replace this with your Render service URL after deploying.
-        const API_BASE_URL = "https://YOUR-RENDER-SERVICE.onrender.com";
+        // --- SHARED ONLINE LEADERBOARD ---
+        // This is the Render backend that stores scores for every player.
+        const API_BASE_URL = 'https://cabbageserver.onrender.com';
+        let cloudSyncTimer = null;
+        let cloudLeaderboard = [];
+        let cloudReady = false;
 
-        async function apiRequest(path, options = {}) {
-            if (API_BASE_URL.includes("YOUR-RENDER-SERVICE")) throw new Error("Add your Render URL to API_BASE_URL first.");
-            const response = await fetch(`${API_BASE_URL}${path}`, {
-                ...options,
-                headers: { "Content-Type": "application/json", ...(options.headers || {}) }
-            });
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(data.error || `Server error (${response.status})`);
-            return data;
+        function setLeaderboardStatus(message, online = false) {
+            const badge = document.getElementById('leaderboard-status');
+            if (!badge) return;
+            badge.textContent = message;
+            badge.className = online
+                ? 'text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full font-extrabold uppercase'
+                : 'text-[10px] bg-amber-500/15 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded-full font-extrabold uppercase';
         }
 
-        let scoreSyncTimer = null;
-        function queueScoreSync() {
-            if (!gameState.playerName) return;
-            clearTimeout(scoreSyncTimer);
-            scoreSyncTimer = setTimeout(async () => {
-                try {
-                    await apiRequest("/api/score", { method: "POST", body: JSON.stringify({
-                        username: gameState.playerName, score: gameState.score, cpm: gameState.cpm
-                    }) });
-                    if (gameState.isTabHeld) renderTabLeaderboard();
-                } catch (error) { console.warn("Score sync failed:", error.message); }
-            }, 900);
-        }
-
-        async function loadOnlinePlayerScore(username) {
+        async function refreshCloudLeaderboard() {
             try {
-                const data = await apiRequest(`/api/player?username=${encodeURIComponent(username)}`);
-                gameState.score = Math.max(gameState.score, Number(data.score || 0));
-                savePlayerProgress();
-                updateHUD();
-                queueScoreSync();
-            } catch (error) { console.warn("Using this device's saved score:", error.message); }
+                const response = await fetch(`${API_BASE_URL}/api/leaderboard`, { cache: 'no-store' });
+                if (!response.ok) throw new Error(`Leaderboard request failed (${response.status})`);
+                const data = await response.json();
+                cloudLeaderboard = Array.isArray(data) ? data : (data.leaderboard || data.scores || data.players || []);
+                cloudReady = true;
+                setLeaderboardStatus('ONLINE SHARED', true);
+                if (gameState.isTabHeld) renderTabLeaderboard();
+                return cloudLeaderboard;
+            } catch (error) {
+                setLeaderboardStatus('OFFLINE / RETRY', false);
+                console.warn('Could not load the shared leaderboard:', error);
+                return cloudLeaderboard;
+            }
+        }
+
+        async function loadCloudPlayer(username) {
+            if (!username) return;
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/player?username=${encodeURIComponent(username)}`, { cache: 'no-store' });
+                if (!response.ok) throw new Error(`Player request failed (${response.status})`);
+                const data = await response.json();
+                const onlineScore = Number(data.score ?? data.bestScore ?? data.best_score ?? data.player?.score ?? 0);
+                if (Number.isFinite(onlineScore) && onlineScore > gameState.score) {
+                    gameState.score = onlineScore;
+                    savePlayerProgress();
+                    updateHUD();
+                }
+                cloudReady = true;
+                setLeaderboardStatus('ONLINE SHARED', true);
+                await refreshCloudLeaderboard();
+                // Send the best score back so a returning player is kept on the table.
+                scheduleCloudSync();
+            } catch (error) {
+                setLeaderboardStatus('OFFLINE / RETRY', false);
+                console.warn('Could not load this player online:', error);
+                refreshCloudLeaderboard();
+            }
+        }
+
+        function scheduleCloudSync() {
+            if (!gameState.playerName) return;
+            clearTimeout(cloudSyncTimer);
+            cloudSyncTimer = setTimeout(async () => {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/api/score`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username: gameState.playerName, score: gameState.score, cpm: gameState.cpm })
+                    });
+                    if (!response.ok) throw new Error(`Score upload failed (${response.status})`);
+                    setLeaderboardStatus('ONLINE SHARED', true);
+                    await refreshCloudLeaderboard();
+                } catch (error) {
+                    setLeaderboardStatus('OFFLINE / RETRY', false);
+                    console.warn('Could not save score online:', error);
+                }
+            }, 900);
         }
 
         // --- GAME CONFIG & PERSISTENT SAVED PROGRESS ---
@@ -365,7 +403,6 @@
             if (!gameState.playerName) return;
             const savedKey = `cabbage_progress_${gameState.playerName.toLowerCase()}`;
             localStorage.setItem(savedKey, gameState.score.toString());
-            queueScoreSync();
         }
 
         // Handle Initial Username Prompt
@@ -389,6 +426,7 @@
                 gameState.score = loadPlayerProgress(chosen);
                 loadEconomy(chosen);
                 updateHUD();
+                loadCloudPlayer(chosen);
 
                 // Hide modal and start
                 usernameModal.classList.add('opacity-0', 'pointer-events-none');
@@ -939,6 +977,7 @@
             // Increment score and save persistently
             gameState.score++;
             savePlayerProgress();
+            scheduleCloudSync();
             // 3 wallet cabbages per 5 eaten, spread evenly so each bite gives 0 or 1
             gameState.wallet += Math.floor((3 * gameState.score) / 5) - Math.floor((3 * (gameState.score - 1)) / 5);
             saveEconomy();
@@ -975,6 +1014,7 @@
             gameState.eatTimestamps = gameState.eatTimestamps.filter(t => now - t <= 10000);
             gameState.cpm = Math.round((gameState.eatTimestamps.length / 10.0) * 60);
             document.getElementById('cpm-display').innerText = gameState.cpm;
+            if (gameState.playerName) scheduleCloudSync();
         }
 
         // --- HOLD-TAB LEADERBOARD OVERLAY ---
@@ -991,39 +1031,38 @@
             }
         }
 
-        async function renderTabLeaderboard() {
+        function renderTabLeaderboard() {
             const list = document.getElementById('leaderboard-list');
-            list.innerHTML = '<div class="text-center text-slate-400 py-6 font-bold">Loading global munchers...</div>';
+            list.innerHTML = '';
             document.getElementById('personal-best-display').innerText = gameState.score.toLocaleString();
-            try {
-                const data = await apiRequest("/api/leaderboard");
-                const players = data.leaderboard || [];
-                list.innerHTML = "";
-                if (!players.length) {
-                    list.innerHTML = '<div class="text-center text-slate-400 py-6">No munchers yet. Be the first!</div>';
-                    return;
-                }
-                players.forEach((player, index) => {
-                    const isYou = player.username.toLowerCase() === (gameState.playerName || "").toLowerCase();
-                    const item = document.createElement('div');
-                    item.className = `grid grid-cols-12 items-center p-3 rounded-xl border text-white font-bold ${
-                        isYou ? 'bg-emerald-500/15 border-emerald-500/60 ring-1 ring-emerald-500/40' : 'bg-slate-800/70 border-slate-700'
-                    }`;
-                    const rankIcon = index === 0 ? '<i class="fa-solid fa-crown text-amber-400"></i>' : `#${index + 1}`;
-                    item.innerHTML = `
-                        <div class="col-span-2"><span class="text-amber-300 font-extrabold flex items-center gap-1">${rankIcon}</span></div>
-                        <div class="col-span-6 flex items-center gap-2 truncate">
-                            <span class="truncate ${isYou ? 'text-emerald-400' : 'text-white'} font-black">${escapeHTML(player.username)}</span>
-                            ${isYou ? '<span class="text-[9px] bg-emerald-500 text-slate-950 font-black px-1.5 py-0.5 rounded">YOU</span>' : ''}
-                        </div>
-                        <div class="col-span-2 text-right font-extrabold text-amber-300">${Number(player.cpm || 0).toLocaleString()}</div>
-                        <div class="col-span-2 text-right font-black text-white">${Number(player.score || 0).toLocaleString()}</div>
-                    `;
-                    list.appendChild(item);
-                });
-            } catch (error) {
-                list.innerHTML = `<div class="text-center text-red-300 py-6 text-sm">Online leaderboard unavailable.<br>${escapeHTML(error.message)}</div>`;
+
+            if (!cloudLeaderboard.length) {
+                const message = document.createElement('div');
+                message.className = 'text-center text-sm text-slate-400 py-5';
+                message.textContent = cloudReady ? 'No scores yet. Be the first muncher!' : 'Connecting to the shared leaderboard...';
+                list.appendChild(message);
+                refreshCloudLeaderboard();
+                return;
             }
+
+            cloudLeaderboard.forEach((entry, index) => {
+                const name = String(entry.username ?? entry.name ?? entry.playerName ?? 'Player');
+                const score = Number(entry.score ?? entry.bestScore ?? entry.best_score ?? 0);
+                const cpm = Number(entry.cpm ?? 0);
+                const isYou = name.toLowerCase() === (gameState.playerName || '').toLowerCase();
+                const item = document.createElement('div');
+                item.className = `grid grid-cols-12 items-center p-3 rounded-xl border ${isYou ? 'bg-emerald-500/15 border-emerald-500/60 ring-1 ring-emerald-500/40' : 'bg-slate-800/70 border-slate-700'} text-white font-bold`;
+                item.innerHTML = `
+                    <div class="col-span-2"><span class="text-amber-400 font-extrabold">#${index + 1}</span></div>
+                    <div class="col-span-6 flex items-center gap-2 truncate">
+                        <span class="truncate ${isYou ? 'text-emerald-400' : 'text-white'}">${escapeHTML(name)}</span>
+                        ${isYou ? '<span class="text-[9px] bg-emerald-500 text-slate-950 font-black px-1.5 py-0.5 rounded">YOU</span>' : ''}
+                    </div>
+                    <div class="col-span-2 text-right font-extrabold text-amber-300">${Number.isFinite(cpm) ? cpm : 0}</div>
+                    <div class="col-span-2 text-right font-black">${Number.isFinite(score) ? score.toLocaleString() : '0'}</div>
+                `;
+                list.appendChild(item);
+            });
         }
 
         function escapeHTML(str) {
@@ -1081,13 +1120,13 @@
                 gameState.score = loadPlayerProgress(gameState.playerName);
                 loadEconomy(gameState.playerName);
                 updateHUD();
-                loadOnlinePlayerScore(gameState.playerName);
+                loadCloudPlayer(gameState.playerName);
                 if (gameState.isTabHeld) renderTabLeaderboard();
             }
         });
 
         document.getElementById('reset-scores-btn').addEventListener('click', () => {
-            if (confirm(`Reset LOCAL cabbage progress for ${gameState.playerName}? Your online leaderboard best score will stay unchanged.`)) {
+            if (confirm(`Reset saved cabbage progress for ${gameState.playerName}?`)) {
                 gameState.score = 0;
                 savePlayerProgress();
                 updateHUD();
@@ -1549,6 +1588,7 @@
 
         updateHUD();
         updateWeatherHUD();
+        refreshCloudLeaderboard();
 
         window.onload = function() {
             animate();
